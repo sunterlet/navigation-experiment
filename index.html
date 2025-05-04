@@ -1,8 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
     <title>Navigation Experiment</title>
     <style>
         body {
@@ -15,9 +14,31 @@
             background-color: #f0f0f0;
             font-family: Arial, sans-serif;
         }
-        #gameCanvas {
-            border: 1px solid #000;
+        #arena {
+            width: 800px;
+            height: 800px;
+            border: 1px solid black;
+            position: relative;
             background-color: white;
+            outline: none;
+        }
+        #arena:focus {
+            box-shadow: 0 0 10px rgba(0, 0, 255, 0.5);
+        }
+        #player {
+            width: 10px;
+            height: 10px;
+            background-color: blue;
+            border-radius: 50%;
+            position: absolute;
+        }
+        .target {
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            border-radius: 50%;
+            position: absolute;
+            opacity: 0.3;
         }
         #instructions {
             position: absolute;
@@ -37,19 +58,289 @@
             border-radius: 10px;
             display: none;
         }
+        #debug {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            font-family: monospace;
+        }
+        #focus-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+        }
+        #trial-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
     <div id="instructions">
         <h2>Instructions</h2>
-        <p>Use the arrow keys to navigate through the arena. Try to find and remember the target location.</p>
+        <p>Use the arrow keys to navigate through the arena.</p>
         <p>Press SPACE to start moving.</p>
+        <p>Try to find and remember the target location.</p>
+    </div>
+    <div id="trial-info">
+        <p>Trial: <span id="trial-number">1</span>/<span id="total-trials">10</span></p>
+        <p>Time: <span id="trial-time">0</span>s</p>
     </div>
     <div id="completionCode">
         <h2>Completion Code</h2>
         <p id="code">Loading...</p>
     </div>
-    <canvas id="gameCanvas" width="800" height="800"></canvas>
-    <script src="experiment.js"></script>
+    <div id="arena" tabindex="0">
+        <div id="player"></div>
+        <div id="focus-message">Click here to start</div>
+    </div>
+    <div id="debug">Debug info will appear here</div>
+    <script>
+        // Experiment configuration
+        const config = {
+            totalTrials: 10,
+            trialDuration: 30, // seconds
+            targetPlacementDelay: 5, // cells to visit before target appears
+            movementSpeed: 5,
+            rotationSpeed: Math.PI / 16
+        };
+
+        // Game state
+        const state = {
+            currentTrial: 1,
+            trialStartTime: null,
+            player: { x: 400, y: 400, angle: 0 },
+            target: null,
+            isMoving: false,
+            visitedCells: new Set(),
+            data: [],
+            trials: []
+        };
+
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const participantId = urlParams.get('PROLIFIC_PID') || 'test_' + Date.now();
+        const studyId = urlParams.get('STUDY_ID') || 'test_study';
+        const sessionId = urlParams.get('SESSION_ID') || 'test_session';
+
+        // Initialize elements
+        const player = document.getElementById('player');
+        const arena = document.getElementById('arena');
+        const completionCode = document.getElementById('code');
+        const debug = document.getElementById('debug');
+        const focusMessage = document.getElementById('focus-message');
+        const trialNumber = document.getElementById('trial-number');
+        const totalTrials = document.getElementById('total-trials');
+        const trialTime = document.getElementById('trial-time');
+
+        // Update trial info
+        totalTrials.textContent = config.totalTrials;
+
+        // Debug function
+        function updateDebug(message) {
+            debug.textContent = message;
+            console.log(message);
+        }
+
+        // Handle arena focus
+        arena.addEventListener('focus', () => {
+            focusMessage.style.display = 'none';
+            updateDebug('Arena focused. Press SPACE to begin.');
+        });
+
+        arena.addEventListener('blur', () => {
+            focusMessage.style.display = 'block';
+            updateDebug('Arena lost focus. Click to continue.');
+        });
+
+        // Handle keyboard input
+        arena.addEventListener('keydown', (e) => {
+            e.preventDefault();
+            updateDebug(`Key pressed: ${e.code}`);
+            
+            if (e.code === 'Space') {
+                if (!state.trialStartTime) {
+                    startTrial();
+                } else {
+                    state.isMoving = !state.isMoving;
+                    updateDebug(`Moving: ${state.isMoving}`);
+                    if (state.isMoving) {
+                        state.data.push({
+                            event: 'started_moving',
+                            time: Date.now() - state.trialStartTime
+                        });
+                    }
+                }
+            } else if (state.isMoving) {
+                switch(e.code) {
+                    case 'ArrowLeft':
+                        state.player.angle -= config.rotationSpeed;
+                        updateDebug(`Angle: ${state.player.angle}`);
+                        break;
+                    case 'ArrowRight':
+                        state.player.angle += config.rotationSpeed;
+                        updateDebug(`Angle: ${state.player.angle}`);
+                        break;
+                    case 'ArrowUp':
+                        movePlayer();
+                        updateDebug(`Position: ${state.player.x}, ${state.player.y}`);
+                        break;
+                }
+                updateDisplay();
+            }
+        });
+
+        // Start trial
+        function startTrial() {
+            state.trialStartTime = Date.now();
+            state.isMoving = false;
+            state.visitedCells.clear();
+            state.target = null;
+            state.data = [];
+            updateDebug(`Starting trial ${state.currentTrial}`);
+            
+            // Remove any existing target
+            const existingTarget = document.querySelector('.target');
+            if (existingTarget) {
+                existingTarget.remove();
+            }
+            
+            // Start trial timer
+            updateTrialTime();
+        }
+
+        // Update trial time
+        function updateTrialTime() {
+            if (!state.trialStartTime) return;
+            
+            const elapsed = Math.floor((Date.now() - state.trialStartTime) / 1000);
+            trialTime.textContent = elapsed;
+            
+            if (elapsed >= config.trialDuration) {
+                endTrial();
+            } else {
+                setTimeout(updateTrialTime, 1000);
+            }
+        }
+
+        // End trial
+        function endTrial() {
+            state.trials.push({
+                trialNumber: state.currentTrial,
+                duration: config.trialDuration,
+                data: state.data
+            });
+            
+            if (state.currentTrial < config.totalTrials) {
+                state.currentTrial++;
+                trialNumber.textContent = state.currentTrial;
+                startTrial();
+            } else {
+                saveData();
+            }
+        }
+
+        // Update display
+        function updateDisplay() {
+            player.style.left = state.player.x + 'px';
+            player.style.top = state.player.y + 'px';
+            player.style.transform = `rotate(${state.player.angle}rad)`;
+        }
+
+        // Move player
+        function movePlayer() {
+            const newX = state.player.x + Math.sin(state.player.angle) * config.movementSpeed;
+            const newY = state.player.y - Math.cos(state.player.angle) * config.movementSpeed;
+
+            if (newX >= 0 && newX <= 800 && newY >= 0 && newY <= 800) {
+                state.player.x = newX;
+                state.player.y = newY;
+                checkTargetPlacement();
+            }
+        }
+
+        // Check target placement
+        function checkTargetPlacement() {
+            if (!state.target && state.isMoving) {
+                const cellX = Math.floor(state.player.x / 40);
+                const cellY = Math.floor(state.player.y / 40);
+                const cellKey = `${cellX},${cellY}`;
+
+                if (!state.visitedCells.has(cellKey)) {
+                    state.visitedCells.add(cellKey);
+                    updateDebug(`Visited cells: ${state.visitedCells.size}`);
+
+                    if (state.visitedCells.size >= config.targetPlacementDelay) {
+                        placeTarget();
+                    }
+                }
+            }
+        }
+
+        // Place target
+        function placeTarget() {
+            state.target = {
+                x: state.player.x - Math.sin(state.player.angle) * 20,
+                y: state.player.y + Math.cos(state.player.angle) * 20
+            };
+
+            const target = document.createElement('div');
+            target.className = 'target';
+            target.style.left = state.target.x + 'px';
+            target.style.top = state.target.y + 'px';
+            arena.appendChild(target);
+
+            state.data.push({
+                event: 'target_placed',
+                time: Date.now() - state.trialStartTime,
+                position: { x: state.target.x, y: state.target.y }
+            });
+            
+            updateDebug('Target placed!');
+        }
+
+        // Save data
+        function saveData() {
+            const data = {
+                participantId,
+                studyId,
+                sessionId,
+                startTime: Date.now(),
+                trials: state.trials
+            };
+
+            // In a real deployment, you would send this to your server
+            console.log('Saving data:', data);
+            
+            // Generate completion code
+            const completionCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            document.getElementById('completionCode').style.display = 'block';
+            document.getElementById('code').textContent = completionCode;
+
+            // Redirect to Prolific completion URL
+            const completionUrl = `https://app.prolific.co/submissions/complete?cc=${completionCode}`;
+            window.location.href = completionUrl;
+        }
+
+        // Start the game
+        updateDisplay();
+        updateDebug('Click on the arena to begin.');
+        focusMessage.style.display = 'block';
+    </script>
 </body>
 </html> 
