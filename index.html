@@ -11,34 +11,34 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background-color: #f0f0f0;
+            background-color: rgb(3, 3, 1);
             font-family: Arial, sans-serif;
         }
         #arena {
-            width: 800px;
+            width: 1000px;
             height: 800px;
-            border: 1px solid black;
             position: relative;
-            background-color: white;
+            background-color: rgb(3, 3, 1);
             outline: none;
         }
         #arena:focus {
-            box-shadow: 0 0 10px rgba(0, 0, 255, 0.5);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
         }
         #player {
-            width: 10px;
-            height: 10px;
-            background-color: blue;
-            border-radius: 50%;
             position: absolute;
+            width: 0;
+            height: 0;
+            border-left: 17px solid transparent;
+            border-right: 17px solid transparent;
+            border-bottom: 30px solid rgb(255, 67, 101);
+            transform-origin: center bottom;
         }
         .target {
             width: 20px;
             height: 20px;
-            background-color: red;
+            background-color: rgb(0, 217, 192);
             border-radius: 50%;
             position: absolute;
-            opacity: 0.3;
         }
         #instructions {
             position: absolute;
@@ -49,14 +49,13 @@
             border-radius: 10px;
             max-width: 300px;
         }
-        #completionCode {
+        #trial-info {
             position: absolute;
             top: 20px;
             right: 20px;
-            background-color: rgba(255, 255, 255, 0.8);
-            padding: 20px;
-            border-radius: 10px;
-            display: none;
+            color: rgb(183, 173, 153);
+            font-size: 24px;
+            text-align: right;
         }
         #debug {
             position: absolute;
@@ -79,140 +78,331 @@
             text-align: center;
             display: none;
         }
-        #trial-info {
+        #instruction-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgb(3, 3, 1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        #instruction-image {
+            max-width: 1000px;
+            max-height: 800px;
+        }
+        #instruction-message {
+            position: absolute;
+            bottom: 50px;
+            color: white;
+            font-size: 24px;
+            text-align: center;
+        }
+        #practice-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgb(3, 3, 1);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        #practice-arena {
+            width: 1000px;
+            height: 800px;
+            position: relative;
+            background-color: rgb(3, 3, 1);
+        }
+        #practice-player {
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-left: 17px solid transparent;
+            border-right: 17px solid transparent;
+            border-bottom: 30px solid rgb(255, 67, 101);
+            transform-origin: center bottom;
+        }
+        #practice-goal {
+            width: 20px;
+            height: 20px;
+            background-color: rgb(0, 217, 192);
+            border-radius: 50%;
+            position: absolute;
+        }
+        #practice-score {
             position: absolute;
             top: 20px;
             right: 20px;
-            background-color: rgba(255, 255, 255, 0.8);
-            padding: 20px;
-            border-radius: 10px;
-            text-align: right;
+            color: rgb(183, 173, 153);
+            font-size: 24px;
+        }
+        #experiment-screen {
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div id="instructions">
-        <h2>Instructions</h2>
-        <p>Use the arrow keys to navigate through the arena.</p>
-        <p>Press SPACE to start moving.</p>
-        <p>Try to find and remember the target location.</p>
+    <div id="instruction-screen">
+        <img id="instruction-image" src="instructions/1.png">
+        <div id="instruction-message">Press Enter to continue</div>
     </div>
-    <div id="trial-info">
-        <p>Trial: <span id="trial-number">1</span>/<span id="total-trials">10</span></p>
-        <p>Time: <span id="trial-time">0</span>s</p>
+    <div id="practice-screen">
+        <div id="practice-arena">
+            <div id="practice-player"></div>
+            <div id="practice-goal"></div>
+            <div id="practice-score">Score: 0</div>
+        </div>
     </div>
-    <div id="completionCode">
-        <h2>Completion Code</h2>
-        <p id="code">Loading...</p>
+    <div id="experiment-screen">
+        <div id="arena" tabindex="0">
+            <div id="player"></div>
+            <div id="focus-message">Click here to start</div>
+        </div>
+        <div id="trial-info">
+            <p>Trial: <span id="trial-number">1</span>/<span id="total-trials">10</span></p>
+            <p>Time: <span id="trial-time">0</span>s</p>
+        </div>
+        <div id="debug">Debug info will appear here</div>
     </div>
-    <div id="arena" tabindex="0">
-        <div id="player"></div>
-        <div id="focus-message">Click here to start</div>
-    </div>
-    <div id="debug">Debug info will appear here</div>
+    <audio id="target-sound" src="sounds/target.wav"></audio>
+    <audio id="beep-sound" src="sounds/beep.wav" loop></audio>
     <script>
         // Experiment configuration
         const config = {
-            totalTrials: 10,
-            trialDuration: 30, // seconds
-            targetPlacementDelay: 5, // cells to visit before target appears
-            movementSpeed: 5,
-            rotationSpeed: Math.PI / 16
+            arenaDiameter: 3.3, // meters
+            arenaRadius: 1.65, // meters
+            borderThreshold: 0.1, // meters
+            scale: 200, // pixels per meter
+            gridSize: 0.05, // meters
+            tipPixels: 30,
+            rotateSpeed: 60.0, // degrees per second
+            practiceRotateSpeed: 70.0, // degrees per second for practice
+            moveSpeed: 1.0, // meters per second
+            targetRadius: 0.1, // meters
+            targetPlacementDelay: 10, // seconds
+            trainingSessions: 3,
+            darkTrainingTrials: 3,
+            testTrials: 5,
+            trialDuration: 30 // seconds
         };
 
-        // Game state
+        // Experiment state
         const state = {
+            phase: 'instructions', // instructions, practice, training, dark_training, test
             currentTrial: 1,
+            currentSession: 1,
             trialStartTime: null,
-            player: { x: 400, y: 400, angle: 0 },
+            player: { x: 0, y: 0, angle: 0 },
             target: null,
             isMoving: false,
             visitedCells: new Set(),
             data: [],
-            trials: []
+            trials: [],
+            movedForward: false,
+            rotatedFlag: false,
+            moveStartPos: null,
+            rotateStartAngle: null,
+            gridCells: new Set()
         };
 
-        // Get URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const participantId = urlParams.get('PROLIFIC_PID') || 'test_' + Date.now();
-        const studyId = urlParams.get('STUDY_ID') || 'test_study';
-        const sessionId = urlParams.get('SESSION_ID') || 'test_session';
+        // Practice game state
+        const practiceState = {
+            score: 0,
+            player: { x: 0, y: 0, angle: 0 },
+            goal: { x: 0, y: 0 },
+            isMoving: false
+        };
 
         // Initialize elements
+        const instructionScreen = document.getElementById('instruction-screen');
+        const instructionImage = document.getElementById('instruction-image');
+        const practiceScreen = document.getElementById('practice-screen');
+        const practicePlayer = document.getElementById('practice-player');
+        const practiceGoal = document.getElementById('practice-goal');
+        const practiceScore = document.getElementById('practice-score');
+        const experimentScreen = document.getElementById('experiment-screen');
         const player = document.getElementById('player');
         const arena = document.getElementById('arena');
-        const completionCode = document.getElementById('code');
         const debug = document.getElementById('debug');
         const focusMessage = document.getElementById('focus-message');
         const trialNumber = document.getElementById('trial-number');
         const totalTrials = document.getElementById('total-trials');
         const trialTime = document.getElementById('trial-time');
+        const targetSound = document.getElementById('target-sound');
+        const beepSound = document.getElementById('beep-sound');
 
-        // Update trial info
-        totalTrials.textContent = config.totalTrials;
-
-        // Debug function
-        function updateDebug(message) {
-            debug.textContent = message;
-            console.log(message);
+        // Show instruction
+        function showInstruction(imageNumber) {
+            instructionScreen.style.display = 'flex';
+            instructionImage.src = `instructions/${imageNumber}.png`;
         }
 
-        // Handle arena focus
-        arena.addEventListener('focus', () => {
-            focusMessage.style.display = 'none';
-            updateDebug('Arena focused. Press SPACE to begin.');
-        });
-
-        arena.addEventListener('blur', () => {
-            focusMessage.style.display = 'block';
-            updateDebug('Arena lost focus. Click to continue.');
-        });
-
-        // Handle keyboard input
-        arena.addEventListener('keydown', (e) => {
-            e.preventDefault();
-            updateDebug(`Key pressed: ${e.code}`);
-            
-            if (e.code === 'Space') {
-                if (!state.trialStartTime) {
-                    startTrial();
-                } else {
-                    state.isMoving = !state.isMoving;
-                    updateDebug(`Moving: ${state.isMoving}`);
-                    if (state.isMoving) {
-                        state.data.push({
-                            event: 'started_moving',
-                            time: Date.now() - state.trialStartTime
-                        });
-                    }
+        // Handle instruction key press
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Enter') {
+                switch(state.phase) {
+                    case 'instructions':
+                        // Show practice instructions
+                        showInstruction(2);
+                        state.phase = 'practice_instructions';
+                        break;
+                    case 'practice_instructions':
+                        // Start practice game
+                        instructionScreen.style.display = 'none';
+                        startPracticeGame();
+                        break;
+                    case 'practice_complete':
+                        // Show training instructions
+                        showInstruction(3);
+                        state.phase = 'training_instructions';
+                        break;
+                    case 'training_instructions':
+                        // Start training sessions
+                        instructionScreen.style.display = 'none';
+                        startTrainingSessions();
+                        break;
+                    case 'training_complete':
+                        // Show dark training instructions
+                        showInstruction(4);
+                        state.phase = 'dark_training_instructions';
+                        break;
+                    case 'dark_training_instructions':
+                        // Start dark training trials
+                        instructionScreen.style.display = 'none';
+                        startDarkTrainingTrials();
+                        break;
+                    case 'dark_training_complete':
+                        // Show test instructions
+                        showInstruction(5);
+                        state.phase = 'test_instructions';
+                        break;
+                    case 'test_instructions':
+                        // Start test trials
+                        instructionScreen.style.display = 'none';
+                        startTestTrials();
+                        break;
                 }
-            } else if (state.isMoving) {
-                switch(e.code) {
-                    case 'ArrowLeft':
-                        state.player.angle -= config.rotationSpeed;
-                        updateDebug(`Angle: ${state.player.angle}`);
-                        break;
-                    case 'ArrowRight':
-                        state.player.angle += config.rotationSpeed;
-                        updateDebug(`Angle: ${state.player.angle}`);
-                        break;
-                    case 'ArrowUp':
-                        movePlayer();
-                        updateDebug(`Position: ${state.player.x}, ${state.player.y}`);
-                        break;
-                }
-                updateDisplay();
             }
         });
 
+        // Start practice game
+        function startPracticeGame() {
+            practiceScreen.style.display = 'flex';
+            practiceState.score = 0;
+            practiceState.player = { x: 0, y: 0, angle: 0 };
+            placePracticeGoal();
+            updatePracticeDisplay();
+        }
+
+        // Place practice goal
+        function placePracticeGoal() {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * (config.arenaRadius - config.borderThreshold);
+            practiceState.goal = {
+                x: distance * Math.sin(angle),
+                y: distance * Math.cos(angle)
+            };
+            practiceGoal.style.left = (500 + practiceState.goal.x * config.scale) + 'px';
+            practiceGoal.style.top = (400 - practiceState.goal.y * config.scale) + 'px';
+        }
+
+        // Update practice display
+        function updatePracticeDisplay() {
+            const screenX = 500 + practiceState.player.x * config.scale;
+            const screenY = 400 - practiceState.player.y * config.scale;
+            practicePlayer.style.left = screenX + 'px';
+            practicePlayer.style.top = screenY + 'px';
+            practicePlayer.style.transform = `rotate(${practiceState.player.angle}rad)`;
+            practiceScore.textContent = `Score: ${practiceState.score}`;
+        }
+
+        // Handle practice keyboard input
+        practiceScreen.addEventListener('keydown', (e) => {
+            e.preventDefault();
+            
+            if (e.code === 'Space') {
+                practiceState.isMoving = !practiceState.isMoving;
+            } else if (practiceState.isMoving) {
+                switch(e.code) {
+                    case 'ArrowLeft':
+                        practiceState.player.angle -= config.practiceRotateSpeed * (1/60) * (Math.PI / 180);
+                        break;
+                    case 'ArrowRight':
+                        practiceState.player.angle += config.practiceRotateSpeed * (1/60) * (Math.PI / 180);
+                        break;
+                    case 'ArrowUp':
+                        movePracticePlayer();
+                        break;
+                }
+                updatePracticeDisplay();
+                checkPracticeGoal();
+            }
+        });
+
+        // Move practice player
+        function movePracticePlayer() {
+            const rad = practiceState.player.angle;
+            const moveDx = config.moveSpeed * (1/60) * Math.sin(rad);
+            const moveDy = config.moveSpeed * (1/60) * Math.cos(rad);
+
+            const newX = practiceState.player.x + moveDx;
+            const newY = practiceState.player.y + moveDy;
+
+            const distanceFromCenter = Math.sqrt(newX ** 2 + newY ** 2);
+            if (distanceFromCenter <= config.arenaRadius - config.borderThreshold) {
+                practiceState.player.x = newX;
+                practiceState.player.y = newY;
+            }
+        }
+
+        // Check practice goal
+        function checkPracticeGoal() {
+            const distance = Math.sqrt(
+                (practiceState.player.x - practiceState.goal.x) ** 2 +
+                (practiceState.player.y - practiceState.goal.y) ** 2
+            );
+            if (distance < config.targetRadius) {
+                practiceState.score++;
+                placePracticeGoal();
+                targetSound.play();
+            }
+        }
+
+        // Start training sessions
+        function startTrainingSessions() {
+            state.currentSession = 1;
+            state.phase = 'training';
+            startTrial(true);
+        }
+
+        // Start dark training trials
+        function startDarkTrainingTrials() {
+            state.currentTrial = 1;
+            state.phase = 'dark_training';
+            startTrial(true, true);
+        }
+
+        // Start test trials
+        function startTestTrials() {
+            state.currentTrial = 1;
+            state.phase = 'test';
+            startTrial(false);
+        }
+
         // Start trial
-        function startTrial() {
+        function startTrial(isTraining, isDark = false) {
+            experimentScreen.style.display = 'block';
             state.trialStartTime = Date.now();
             state.isMoving = false;
             state.visitedCells.clear();
             state.target = null;
             state.data = [];
-            updateDebug(`Starting trial ${state.currentTrial}`);
             
             // Remove any existing target
             const existingTarget = document.querySelector('.target');
@@ -224,123 +414,48 @@
             updateTrialTime();
         }
 
-        // Update trial time
-        function updateTrialTime() {
-            if (!state.trialStartTime) return;
-            
-            const elapsed = Math.floor((Date.now() - state.trialStartTime) / 1000);
-            trialTime.textContent = elapsed;
-            
-            if (elapsed >= config.trialDuration) {
-                endTrial();
-            } else {
-                setTimeout(updateTrialTime, 1000);
-            }
-        }
-
         // End trial
         function endTrial() {
             state.trials.push({
                 trialNumber: state.currentTrial,
+                sessionNumber: state.currentSession,
+                phase: state.phase,
                 duration: config.trialDuration,
                 data: state.data
             });
-            
-            if (state.currentTrial < config.totalTrials) {
-                state.currentTrial++;
-                trialNumber.textContent = state.currentTrial;
-                startTrial();
-            } else {
-                saveData();
-            }
-        }
 
-        // Update display
-        function updateDisplay() {
-            player.style.left = state.player.x + 'px';
-            player.style.top = state.player.y + 'px';
-            player.style.transform = `rotate(${state.player.angle}rad)`;
-        }
-
-        // Move player
-        function movePlayer() {
-            const newX = state.player.x + Math.sin(state.player.angle) * config.movementSpeed;
-            const newY = state.player.y - Math.cos(state.player.angle) * config.movementSpeed;
-
-            if (newX >= 0 && newX <= 800 && newY >= 0 && newY <= 800) {
-                state.player.x = newX;
-                state.player.y = newY;
-                checkTargetPlacement();
-            }
-        }
-
-        // Check target placement
-        function checkTargetPlacement() {
-            if (!state.target && state.isMoving) {
-                const cellX = Math.floor(state.player.x / 40);
-                const cellY = Math.floor(state.player.y / 40);
-                const cellKey = `${cellX},${cellY}`;
-
-                if (!state.visitedCells.has(cellKey)) {
-                    state.visitedCells.add(cellKey);
-                    updateDebug(`Visited cells: ${state.visitedCells.size}`);
-
-                    if (state.visitedCells.size >= config.targetPlacementDelay) {
-                        placeTarget();
+            switch(state.phase) {
+                case 'training':
+                    if (state.currentSession < config.trainingSessions) {
+                        state.currentSession++;
+                        startTrial(true);
+                    } else {
+                        state.phase = 'training_complete';
+                        showInstruction(4);
                     }
-                }
+                    break;
+                case 'dark_training':
+                    if (state.currentTrial < config.darkTrainingTrials) {
+                        state.currentTrial++;
+                        startTrial(true, true);
+                    } else {
+                        state.phase = 'dark_training_complete';
+                        showInstruction(5);
+                    }
+                    break;
+                case 'test':
+                    if (state.currentTrial < config.testTrials) {
+                        state.currentTrial++;
+                        startTrial(false);
+                    } else {
+                        saveData();
+                    }
+                    break;
             }
         }
 
-        // Place target
-        function placeTarget() {
-            state.target = {
-                x: state.player.x - Math.sin(state.player.angle) * 20,
-                y: state.player.y + Math.cos(state.player.angle) * 20
-            };
-
-            const target = document.createElement('div');
-            target.className = 'target';
-            target.style.left = state.target.x + 'px';
-            target.style.top = state.target.y + 'px';
-            arena.appendChild(target);
-
-            state.data.push({
-                event: 'target_placed',
-                time: Date.now() - state.trialStartTime,
-                position: { x: state.target.x, y: state.target.y }
-            });
-            
-            updateDebug('Target placed!');
-        }
-
-        // Save data
-        function saveData() {
-            const data = {
-                participantId,
-                studyId,
-                sessionId,
-                startTime: Date.now(),
-                trials: state.trials
-            };
-
-            // In a real deployment, you would send this to your server
-            console.log('Saving data:', data);
-            
-            // Generate completion code
-            const completionCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            document.getElementById('completionCode').style.display = 'block';
-            document.getElementById('code').textContent = completionCode;
-
-            // Redirect to Prolific completion URL
-            const completionUrl = `https://app.prolific.co/submissions/complete?cc=${completionCode}`;
-            window.location.href = completionUrl;
-        }
-
-        // Start the game
-        updateDisplay();
-        updateDebug('Click on the arena to begin.');
-        focusMessage.style.display = 'block';
+        // Start the experiment
+        showInstruction(1);
     </script>
 </body>
 </html> 
